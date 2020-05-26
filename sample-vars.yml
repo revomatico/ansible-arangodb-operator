@@ -65,4 +65,4 @@ arangodb_clusters:
       storageClassName: "{{ arangodb_operator_release }}-arangodb-local"
     coordinators:
       count: 3
-    image: "arangodb/arangodb:3.5.5"
+    image: "arangodb/arangodb:3.6.3"
