@@ -1,0 +1,163 @@
+---
+- name: Create temporary directory
+  tempfile:
+    state: directory
+    suffix: arangodb-operator
+  register: arangodb_tempdir
+
+- set_fact:
+    _raw_kubernetes_manifests: []
+    _cluster_overlay_dir: "{{ arangodb_tempdir.path ~ '/overlays/' ~ arangodb_operator_release }}"
+    _storage_overlay_dir: "{% if arangodb_operator_manifest_local_storage | d('', true) | length %}{{ arangodb_tempdir.path }}/overlays/storage{% endif %}"
+
+- set_fact:
+    arangodb_operator_manifests: "{{ arangodb_operator_manifests + [item] }}"
+  loop:
+  - "{{ arangodb_operator_manifest_local_storage }}"
+  - "{{ arangodb_operator_manifest_replication }}"
+  when: item | d('', true) | length
+
+- import_tasks: preflight.yml
+  tags: preflight
+
+- name: Create kustomize directories
+  file:
+    dest: "{{ item }}"
+    state: directory
+    recurse: yes
+  loop:
+  - "{{ arangodb_tempdir.path }}/base"
+  - "{{ _cluster_overlay_dir }}"
+  - "{{ _storage_overlay_dir }}"
+  when: item | length
+
+- name: Download ArangoDB Operator manifests
+#  get_url:
+#    url: https://raw.githubusercontent.com/arangodb/kube-arangodb/{{ arangodb_operator_version }}/manifests/{{ item }}
+#    dest: "{{ arangodb_tempdir.path ~ '/base/' ~ item }}"
+  uri:
+    url: https://raw.githubusercontent.com/arangodb/kube-arangodb/{{ arangodb_operator_version }}/manifests/{{ item }}
+    return_content: yes
+  loop: "{{ arangodb_operator_manifests }}"
+  when: item | length
+  register: downloaded_manifests
+
+## We need to separate K8S objects that are non-namespaced, because we do not want kustomize to process them
+- name: Split multiple yaml objects
+  set_fact:
+    _raw_kubernetes_manifests: "{{ _raw_kubernetes_manifests + item.content | from_yaml_all | list }}"
+  loop: "{{ downloaded_manifests.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Dump each manifest to appropriate locations
+  vars:
+    _filename: "{{ arangodb_tempdir.path ~ ('/base/' ~ item.kind ~ '-' ~ item.metadata.name) | lower }}.yaml"
+  copy:
+    content: |
+      ---
+      {% if item.get('kind',{}) in ['ClusterRole', 'ClusterRoleBinding'] %}
+      {{ item
+         | combine(
+             dict(
+               metadata=
+                 item.metadata
+                 | dict2items
+                 | rejectattr('key','equalto', 'namespace')
+                 | list
+                 | items2dict
+             )
+           )
+        | to_nice_yaml
+      }}
+      {% else %}
+      {{ item | to_nice_yaml }}
+      {% endif %}
+    dest: "{{ _filename }}"
+  register: dumped_manifests
+  loop: "{{ _raw_kubernetes_manifests }}"
+  loop_control:
+    label: "{% if item is not none %}{{ item.kind }}: {{ item.metadata.name }}{% endif %}"
+  when: item is not none
+
+- name: Generate kustomization file for base
+  vars:
+    _kustomize_sections:
+      resources: "{{ dumped_manifests.results | selectattr('dest','defined') | map(attribute='dest') | map('basename') | list }}"
+  template:
+    src: "kustomization.yaml.j2"
+    dest: "{{ arangodb_tempdir.path }}/base/kustomization.yaml"
+
+- name: Write patches
+  copy:
+    content: |
+      {% for k in kustomizations %}
+      ---
+      {{ k | to_nice_yaml }}
+      {% endfor %}
+    dest: "{{ _cluster_overlay_dir }}/patches.yaml"
+  when: kustomizations | d([]) | length
+
+- name: Write ArangoDB Cluster CRDs
+  copy:
+    content: |
+      {% for c in arangodb_clusters %}
+      ---
+      {{ c | to_nice_yaml }}
+      {% endfor %}
+    dest: "{{ _cluster_overlay_dir }}/clusters.yaml"
+  when: arangodb_clusters | d([]) | length
+
+- name: Generate kustomization file for {{ arangodb_operator_release }}
+  vars:
+    _kustomize_sections:
+      bases:
+      - ../../base
+      patchesStrategicMerge:
+      - patches.yaml
+      resources:
+      - clusters.yaml
+      namespace: "{{ arangodb_operator_namespace }}"
+      namePrefix: "{{ arangodb_operator_release }}-"
+  template:
+    src: "kustomization.yaml.j2"
+    dest: "{{ _cluster_overlay_dir }}/kustomization.yaml"
+
+## ArangoLocalStorage CRD is NOT namespaced, so we create a separate overlay
+- block:
+  - name: Write local storage CRDs
+    copy:
+      content: |
+        {% for s in arangodb_local_storages %}
+        ---
+        {{ s | to_nice_yaml }}
+        {% endfor %}
+      dest: "{{ _storage_overlay_dir }}/local-storages.yaml"
+  - name: Generate kustomization file for storage
+    vars:
+      _kustomize_sections:
+        resources:
+        - local-storages.yaml
+        namePrefix: "{{ arangodb_operator_release }}-"
+    template:
+      src: "kustomization.yaml.j2"
+      dest: "{{ _storage_overlay_dir }}/kustomization.yaml"
+  when:
+    arangodb_local_storages | d([]) | length
+    and _storage_overlay_dir | length
+
+- name: Kustomize
+  shell: |
+    bin/kustomize build {{ _cluster_overlay_dir }}{% if _storage_overlay_dir | length %}; echo '---'; bin/kustomize build {{ _storage_overlay_dir }}{% endif %}
+  register: _kustomize
+
+#- copy:
+#    content: "{{ _kustomize.stdout }}"
+#    dest: "{{ arangodb_tempdir.path }}/dump.yaml"
+
+#- meta: end_play
+
+- name: Cleanup
+  file:
+    path: "{{ arangodb_tempdir.path }}"
+    state: absent

@@ -1,0 +1,17 @@
+kustomize_version: 3.5.5
+
+arangodb_operator_version: 1.0.2
+arangodb_operator_namespace: arangodb
+
+arangodb_operator_manifests:
+- arango-crd.yaml
+- arango-deployment.yaml
+- arango-backup.yaml
+
+## Optional: runs the operator that provides PersistentVolumes on local disks of the cluster nodes.
+## Set empty to skip deployment
+arangodb_operator_manifest_local_storage: arango-storage.yaml
+
+## Optional: runs the operator that takes care of DC2DC replications.
+## Set to empty to skip deployment
+arangodb_operator_manifest_replication: arango-deployment-replication.yaml

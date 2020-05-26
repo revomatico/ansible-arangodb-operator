@@ -1,0 +1,28 @@
+- name: Create {{ arangodb_operator_namespace }} namespace
+  k8s:
+    kubeconfig: "{{ kubeconfig_file_path | d(omit) }}"
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ arangodb_operator_namespace }}"
+
+- name: Apply rendered kubernetes manifests
+  k8s:
+    kubeconfig: "{{ kubeconfig_file_path | d(omit) }}"
+    definition: "{{ item }}"
+  retries: "{{ kubernetes_operation_retries | d(20) }}"
+  delay: "{{ kubernetes_operation_delay | d(10) }}"
+  loop: "{{ kubernetes_manifests | from_yaml_all | list }}"
+  loop_control:
+    label: "{% if item is not none %}{{ item.kind }}: {{ item.metadata.name }}{% endif %}"
+  when: item is not none
+  register: ret
+  until: |
+    ret.get('status', 200) != 200
+    or (
+      ret.get('result', {}).get('kind') in ['Deployment', 'StatefulSet']
+      and ret.get('result', {}).get('status', {}).get('readyReplicas', -1) == ret.get('result', {}).get('status', {}).get('replicas')
+    )
+    or ret.get('result', {}).get('kind') not in ['Deployment', 'StatefulSet']
+  ignore_errors: "{{ kubernetes_ignore_errors | d('yes') }}"
