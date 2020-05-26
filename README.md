@@ -1,10 +1,12 @@
-# Purpose
+# ansible-arangodb-operator
+
+## Purpose
 - Ansible role to deploy [ArangoDB Operator](https://github.com/arangodb/kube-arangodb) in Kubernetes.
 - Multiple operators can be deployed in multiple namespaces. Default namespace is: `arangodb`
 - Multiple ArangoDB clusters can be deployed by an operator.
 
 
-# Features
+## Features
 - Downloads [manifests](https://github.com/arangodb/kube-arangodb/tree/master/manifests) from desired release
 - Applies user default patches, overriding defaults in original manifests
 - Loads resulting manifests in Kubernetes:
@@ -13,14 +15,21 @@
 - Instruct operator to deploy cluster(s) and optionally local storages
 
 
-# Dependencies
+## Dependencies
 - [Kustomize](https://github.com/kubernetes-sigs/kustomize) - will be automatically downloaded in project `bin/` directory
 - Pip3 packages: see [requirements.pip](requirements.pip) - automatically installed in preflight
+- Developed and tested with ansible 2.8, may work with lower/higher versions
 
 
-# Usage
-1. Set up your ansible inventory with appropriate hosts and SSH keys
-2. Set your cluster and deployments options in the vars file (See [sample-vars.yml](sample-vars.yml))
+## Usage
+1. Set up your ansible inventory with appropriate hosts and SSH keys:
+    - To run remotely:
+        - Set your ansible_host in `sample-inventory/host_vars/master` to point to your kubernetes master
+        - Set up your ssh key for authentication to the master
+    - To run locally:
+        - in [sample-inventory/host_vars/master](sample-inventory/host_vars/master), uncomment: `ansible_connection: local`
+        - set the playbook variable `kubeconfig_file_path` pointing to a local kubeconfig
+2. Set your cluster and deployments options in a vars file (See [sample-vars.yml](sample-vars.yml))
 3. Run the playbook:
 
     ```bash
@@ -35,16 +44,16 @@
     - To skip preflight and speed up a bit, add `--skip-tags preflight`
 
 
-# Backup using the operator
+## Backup using the operator
 - TODO
 
 
-# Reference
+## Reference
 - https://www.arangodb.com/docs/stable/tutorials-kubernetes.html
 - https://www.arangodb.com/docs/stable/deployment-kubernetes-deployment-resource.html
 
 
-# Variables and parameters
+## Variables and parameters
 
 | Variable                                 | Default                                                       | Description                                                                                                                                                                                                         |
 |------------------------------------------|---------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -65,5 +74,5 @@
 | kubernetes_ignore_errors                 | yes                                                           | Set to 'no' to fail fast at the first encountered error when trying to create objects in kubernetes                                                                                                                 |
 
 
-# License
+## License
 MIT
