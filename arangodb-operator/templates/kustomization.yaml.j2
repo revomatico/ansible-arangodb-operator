@@ -1,9 +1,11 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-{% for name,content in _kustomize_sections.items() %}
-{{ name }}:{% if content is string %} "{{ content }}"{% else %}
+{% for key,value in _kustomize_sections.items() %}
+{% if value | d('', true) | length > 0 %}
+{{ key }}:{% if value is string %} "{{ value }}"{% else %}
 
-  {{ content | to_nice_yaml | indent(2) }}{% endif %}
+  {{ value | to_nice_yaml | indent(2) }}{% endif %}
 
+{% endif %}
 {% endfor %}

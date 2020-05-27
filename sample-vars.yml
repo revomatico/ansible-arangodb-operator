@@ -5,26 +5,35 @@ arangodb_operator_manifest_replication:
 
 ## Reduce replicas from default of 2
 kustomizations:
-- apiVersion: apps/v1
-  kind: Deployment
-  metadata:
-    name: arango-backup-operator
-  spec:
-    replicas: 1
+  patchesStrategicMerge:
+  - apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: arango-backup-operator
+    spec:
+      replicas: 1
+  - apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: arango-deployment-operator
+    spec:
+      replicas: 1
+  - apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: arango-storage-operator
+    spec:
+      replicas: 1
 
-- apiVersion: apps/v1
-  kind: Deployment
-  metadata:
-    name: arango-deployment-operator
-  spec:
-    replicas: 1
-
-- apiVersion: apps/v1
-  kind: Deployment
-  metadata:
-    name: arango-storage-operator
-  spec:
-    replicas: 1
+  patches:
+  ## Fix a bug for backup operator, see https://github.com/arangodb/kube-arangodb/pull/568
+  - target:
+      kind: Role
+      name: arango-backup-operator-rbac-backup
+    patch: |-
+      - op: add
+        path: /rules/0/verbs/-
+        value: create
 
 ## Create a local storage to be used by the cluster
 arangodb_local_storages:

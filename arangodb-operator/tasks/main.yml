@@ -9,6 +9,8 @@
     _raw_kubernetes_manifests: []
     _cluster_overlay_dir: "{{ arangodb_tempdir.path ~ '/overlays/' ~ arangodb_operator_release }}"
     _storage_overlay_dir: "{% if arangodb_operator_manifest_local_storage | d('', true) | length %}{{ arangodb_tempdir.path }}/overlays/storage{% endif %}"
+    _patchesStrategicMerge: "{{ (kustomizations | d({})).get('patchesStrategicMerge', []) }}"
+    _patches: "{{ (kustomizations | d({})).get('patches', []) }}"
 
 - set_fact:
     arangodb_operator_manifests: "{{ arangodb_operator_manifests + [item] }}"
@@ -91,12 +93,12 @@
 - name: Write patches
   copy:
     content: |
-      {% for k in kustomizations %}
+      {% for k in _patchesStrategicMerge %}
       ---
       {{ k | to_nice_yaml }}
       {% endfor %}
-    dest: "{{ _cluster_overlay_dir }}/patches.yaml"
-  when: kustomizations | d([]) | length
+    dest: "{{ _cluster_overlay_dir }}/patchesStrategicMerge.yaml"
+  when: _patchesStrategicMerge | length
 
 - name: Write ArangoDB Cluster CRDs
   copy:
@@ -113,8 +115,8 @@
     _kustomize_sections:
       bases:
       - ../../base
-      patchesStrategicMerge:
-      - patches.yaml
+      patchesStrategicMerge: "{% if _patchesStrategicMerge | length %}{{ ['patchesStrategicMerge.yaml'] }}{% endif %}"
+      patches: "{{ _patches }}"
       resources:
       - clusters.yaml
       namespace: "{{ arangodb_operator_namespace }}"
@@ -148,7 +150,7 @@
 
 - name: Kustomize
   shell: |
-    bin/kustomize build {{ _cluster_overlay_dir }}{% if _storage_overlay_dir | length %}; echo '---'; bin/kustomize build {{ _storage_overlay_dir }}{% endif %}
+    bin/kustomize build {{ _cluster_overlay_dir }}{% if _storage_overlay_dir | length %} && echo '---' && bin/kustomize build {{ _storage_overlay_dir }} && echo '' {% endif %}
   register: _kustomize
 
 #- copy:
