@@ -11,7 +11,7 @@
   vars:
     kubernetes_manifests: "{{ hostvars['localhost']['_kustomize']['stdout'] }}"
   tasks:
-  - meta: end_play
+#  - meta: end_play
   - block:
     - include_vars:
         dir: arangodb-operator/defaults
