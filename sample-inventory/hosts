@@ -6,6 +6,10 @@ k8s_masters:
   hosts:
     master:
 
+controller:
+  hosts:
+    localhost:
+
 ## Not actually needed for the time being, nothing to do on the actual nodes
 #nodes:
 #  hosts:

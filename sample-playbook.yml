@@ -1,5 +1,5 @@
 ## Prepare all manifests locally
-- hosts: localhost
+- hosts: controller
   tasks:
   - include_role:
       name: arangodb-operator
@@ -9,7 +9,7 @@
 ## Upload manifests to the K8S cluster via ssh to the master node
 - hosts: master
   vars:
-    kubernetes_manifests: "{{ hostvars['localhost']['_kustomize']['stdout'] }}"
+    kubernetes_manifests: "{{ hostvars['controller']['_kustomize']['stdout'] }}"
   tasks:
 #  - meta: end_play
   - block:
