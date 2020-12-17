@@ -44,13 +44,83 @@
     - To skip preflight and speed up a bit, add `--skip-tags preflight`
 
 
-## Backup using the operator
-- TODO
-
-
 ## Reference
 - https://www.arangodb.com/docs/stable/tutorials-kubernetes.html
 - https://www.arangodb.com/docs/stable/deployment-kubernetes-deployment-resource.html
+
+
+## ArangoDB Backup & Restore
+- 3 types of backups:
+  - Physical (raw or “cold”) backups - can be done when the ArangoDB Server is not running
+  - Logical backups - `arangodump` & `arangorestore`
+  - Hot backups - Arangobackup & Hot Backup API - Enterprise Edition only
+- Ref: https://www.arangodb.com/docs/stable/backup-restore.html
+- Will explain more about the **Logical backups** method in the following sections
+
+### Backup
+- By using `arangodump`, this can be done manually or in a kubernetes CronJob as in the example below
+  ```
+  apiVersion: batch/v1beta1
+  kind: CronJob
+  metadata:
+    labels: {}
+    name: "arangodb-backup"
+    namespace: <namespace>
+  spec:
+    schedule: 0 0 * * *
+    jobTemplate:
+      spec:
+        template:
+          spec:
+            containers:
+            - name: arangodb-backup
+              image: arangodb:<image_tag>
+              command:
+              - /bin/sh
+              - -c
+              args:
+              - |-
+                arangodump \
+                  --server.endpoint "http+tcp://<cluster-exporter-service-name>.<namespace>:8529" \
+                  --server.database "<database_name>" \
+                  --server.username $DB_USERNAME --server.password $DB_PASSWORD \
+                  --output-directory "/backups/<database_name>-`date '+%Y-%m-%d_%H-%M-%S'`" && \
+                find /backups/ -mindepth 1 -maxdepth 1 -mtime +7 -type d -exec rm -fvr {} \;
+              env:
+              - name: DB_USERNAME
+                valueFrom:
+                  secretKeyRef:
+                    key: username
+                    name: <arangodb-cluster-root-password-secret>
+              - name: DB_PASSWORD
+                valueFrom:
+                  secretKeyRef:
+                    key: password
+                    name: <arangodb-cluster-root-password-secret>
+              volumeMounts:
+              - mountPath: /backups
+                name: arangodb-backup-pv
+            volumes:
+            - name: arangodb-backup-pv
+              persistentVolumeClaim:
+                claimName: arangodb-backup-pvc
+  ```
+  - A persistent volume (`arangodb-backup-pv`) and a persistent volume claim (`arangodb-backup-pvc`) should be created for this to work
+- This CronJob will perform a daily backup and cleanup, leaving the backups from the last 7 days.
+- More details about backup: https://www.arangodb.com/docs/stable/programs-arangodump-examples.html
+
+### Restore
+- Restoring a database can be done using `arangorestore` as in the following example:
+  ```
+  arangorestore \
+    --server.endpoint "http+tcp://<cluster-exporter-service-name>.<namespace>:8529" \
+    --server.database <database_name> \
+    --create-database true \
+    --server.username <username> \
+    --server.password <password> \
+    --input-directory <backup_dir_path>
+  ```
+- More details about restore: https://www.arangodb.com/docs/stable/programs-arangorestore-examples.html
 
 
 ## Variables and parameters
