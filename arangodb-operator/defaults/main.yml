@@ -1,6 +1,6 @@
 kustomize_version: 3.8.7
 
-arangodb_operator_version: 1.1.5
+arangodb_operator_version: 1.1.9
 arangodb_operator_namespace: arangodb
 
 arangodb_operator_manifests:
