@@ -25,19 +25,9 @@ kustomizations:
     spec:
       replicas: 1
 
-  patches:
-  ## Fix a bug for backup operator, see https://github.com/arangodb/kube-arangodb/pull/568
-  - target:
-      kind: Role
-      name: arango-backup-operator-rbac-backup
-    patch: |-
-      - op: add
-        path: /rules/0/verbs/-
-        value: create
-
 ## Create a local storage to be used by the cluster
 arangodb_local_storages:
-- apiVersion: "storage.arangodb.com/v1alpha"
+- apiVersion: "storage.arangodb.com/v1"
   kind: "ArangoLocalStorage"
   metadata:
     ## Kustomize will prepend name prefix
@@ -50,7 +40,7 @@ arangodb_local_storages:
 
 ## Create a production grade ArangoDB cluster
 arangodb_clusters:
-- apiVersion: "database.arangodb.com/v1alpha"
+- apiVersion: "database.arangodb.com/v1"
   kind: "ArangoDeployment"
   metadata:
     ## Kustomize will prepend name prefix
@@ -74,4 +64,4 @@ arangodb_clusters:
       storageClassName: "{{ arangodb_operator_release }}-arangodb-local"
     coordinators:
       count: 3
-    image: "arangodb/arangodb:3.6.3"
+    image: "arangodb/arangodb:3.8.0"
