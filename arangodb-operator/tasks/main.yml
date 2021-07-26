@@ -8,12 +8,12 @@
 - set_fact:
     _raw_kubernetes_manifests: []
     _cluster_overlay_dir: "{{ arangodb_tempdir.path ~ '/overlays/' ~ arangodb_operator_release }}"
-    _storage_overlay_dir: "{% if arangodb_operator_manifest_local_storage | d('', true) | length %}{{ arangodb_tempdir.path }}/overlays/storage{% endif %}"
+    _storage_overlay_dir: "{% if arangodb_local_storages | d([], true) | length %}{{ arangodb_tempdir.path }}/overlays/storage{% endif %}"
     _patchesStrategicMerge: "{{ (kustomizations | d({})).get('patchesStrategicMerge', []) }}"
     _patches: "{{ (kustomizations | d({})).get('patches', []) }}"
 
 - set_fact:
-    arangodb_operator_manifests: "{{ arangodb_operator_manifests + [item] }}"
+    arangodb_operator_manifests: "{{ arangodb_operator_manifests | d([], true) + [item] }}"
   loop:
   - "{{ arangodb_operator_manifest_local_storage }}"
   - "{{ arangodb_operator_manifest_replication }}"
@@ -31,17 +31,14 @@
   - "{{ arangodb_tempdir.path }}/base"
   - "{{ _cluster_overlay_dir }}"
   - "{{ _storage_overlay_dir }}"
-  when: item | length
+  when: item | d('', true) | length
 
 - name: Download ArangoDB Operator manifests
-#  get_url:
-#    url: https://raw.githubusercontent.com/arangodb/kube-arangodb/{{ arangodb_operator_version }}/manifests/{{ item }}
-#    dest: "{{ arangodb_tempdir.path ~ '/base/' ~ item }}"
   uri:
     url: https://raw.githubusercontent.com/arangodb/kube-arangodb/{{ arangodb_operator_version }}/manifests/{{ item }}
     return_content: yes
   loop: "{{ arangodb_operator_manifests }}"
-  when: item | length
+  when: item | d('', true) | length
   register: downloaded_manifests
 
 ## We need to separate K8S objects that are non-namespaced, because we do not want kustomize to process them
@@ -117,17 +114,16 @@
       - ../../base
       patchesStrategicMerge: "{% if _patchesStrategicMerge | length %}{{ ['patchesStrategicMerge.yaml'] }}{% endif %}"
       patches: "{{ _patches }}"
-      resources:
-      - clusters.yaml
+      resources: "{% if arangodb_clusters | d([]) | length %}{{ ['clusters.yaml'] }}{% else %}[]{% endif %}"
       namespace: "{{ arangodb_operator_namespace }}"
       namePrefix: "{{ arangodb_operator_release }}-"
   template:
     src: "kustomization.yaml.j2"
     dest: "{{ _cluster_overlay_dir }}/kustomization.yaml"
 
-## ArangoLocalStorage CRD is NOT namespaced, so we create a separate overlay
+## ArangoLocalStorage CRs is NOT namespaced, so we create a separate overlay
 - block:
-  - name: Write local storage CRDs
+  - name: Write local storage CRs
     copy:
       content: |
         {% for s in arangodb_local_storages %}
@@ -145,19 +141,21 @@
       src: "kustomization.yaml.j2"
       dest: "{{ _storage_overlay_dir }}/kustomization.yaml"
   when:
-    arangodb_local_storages | d([]) | length
-    and _storage_overlay_dir | length
+  - arangodb_local_storages | d([]) | length
 
 - name: Kustomize
   shell: |
-    bin/kustomize build {{ _cluster_overlay_dir }}{% if _storage_overlay_dir | length %} && echo '---' && bin/kustomize build {{ _storage_overlay_dir }} && echo '' {% endif %}
+    bin/kustomize build {{ _cluster_overlay_dir }}{% if _storage_overlay_dir | d('', true) | length %} && echo '---' && bin/kustomize build {{ _storage_overlay_dir }} && echo '' {% endif %}
   register: _kustomize
 
-#- copy:
-#    content: "{{ _kustomize.stdout }}"
-#    dest: "{{ arangodb_tempdir.path }}/dump.yaml"
-
-#- meta: end_play
+- block:
+  - copy:
+      content: "{{ _kustomize.stdout }}"
+      dest: "{{ arangodb_tempdir.path }}/dump.yaml"
+  - meta: end_play
+  tags:
+  - never
+  - debug
 
 - name: Cleanup
   file:
